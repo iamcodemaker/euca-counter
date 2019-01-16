@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use cfg_if::cfg_if;
 use log::{trace, debug, info, warn, error};
-use euca::DomIter;
+use euca::{Update, DomIter};
 
 cfg_if! {
     // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -132,10 +132,12 @@ fn counter(count: i32) -> Dom<Msg> {
     }
 }
 
-fn update(model: &mut Model, msg: Msg) {
-    match msg {
-        Msg::Increment => model.0 += 1,
-        Msg::Decrement => model.0 -= 1,
+impl euca::Update<Msg> for Model {
+    fn update(&mut self, msg: Msg) {
+        match msg {
+            Msg::Increment => self.0 += 1,
+            Msg::Decrement => self.0 -= 1,
+        }
     }
 }
 
@@ -212,7 +214,7 @@ impl App {
 
     fn dispatch(&mut self, msg: Msg) {
         // update the model
-        update(&mut self.model, msg);
+        self.model.update(msg);
 
         // render a new dom from the updated model
         let mut dom = render(&self.model);
@@ -280,14 +282,14 @@ mod tests {
     #[test]
     fn increment() {
         let mut model = Model::new();
-        update(&mut model, Msg::Increment);
+        model.update(Msg::Increment);
         assert_eq!(model.0, 1);
     }
 
     #[test]
     fn decrement() {
         let mut model = Model::new();
-        update(&mut model, Msg::Decrement);
+        model.update(Msg::Decrement);
         assert_eq!(model.0, -1);
     }
 
