@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use cfg_if::cfg_if;
 use log::{trace, debug, info, warn, error};
-use euca::{Update, DomIter};
+use euca::{Update, Render, DomIter};
 
 cfg_if! {
     // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -141,12 +141,14 @@ impl euca::Update<Msg> for Model {
     }
 }
 
-fn render(model: &Model) -> DomVec<Msg> {
-    vec![
-        button("+", Msg::Increment),
-        counter(model.0),
-        button("-", Msg::Decrement),
-    ].into()
+impl euca::Render<DomVec<Msg>> for Model {
+    fn render(&self) -> DomVec<Msg> {
+        vec![
+            button("+", Msg::Increment),
+            counter(self.0),
+            button("-", Msg::Decrement),
+        ].into()
+    }
 }
 
 struct DomVec<Msg>(Vec<Dom<Msg>>);
@@ -178,7 +180,7 @@ struct App {
 impl App {
     fn attach(parent: web_sys::Element, model: Model) {
         // render our initial model
-        let dom = render(&model);
+        let dom = model.render();
 
         // we use a RefCell here because we need the dispatch callback to be able to mutate our
         // App. This should be safe because the browser should only ever dispatch events from a
@@ -217,7 +219,7 @@ impl App {
         self.model.update(msg);
 
         // render a new dom from the updated model
-        let mut dom = render(&self.model);
+        let mut dom = self.model.render();
 
         // push changes to the browser
         debug!("rendering update");
