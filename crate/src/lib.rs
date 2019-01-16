@@ -183,17 +183,14 @@ impl App {
         // around.
 
         // render the initial app
-        {
-            debug!("rendering initial dom");
-            let empty: Vec<euca::DomItem<Msg>> = vec![];
+        use std::iter;
+        debug!("rendering initial dom");
 
-            let mut app = app.borrow_mut();
+        let mut app = app.borrow_mut();
 
-            let mut o = empty.into_iter();
-            let mut n = app.dom.iter_mut().flat_map(|d| d.dom());
-            let patch_set = euca::diff(&mut o, &mut n);
-            euca::patch(parent, patch_set, callback);
-        }
+        let n = app.dom.iter_mut().flat_map(|d| d.dom());
+        let patch_set = euca::diff(iter::empty(), n);
+        euca::patch(parent, patch_set, callback);
     }
 
     fn dispatch(&mut self, msg: Msg) {
@@ -204,13 +201,11 @@ impl App {
         let mut dom = render(&self.model);
 
         // push changes to the browser
-        {
-            debug!("rendering update");
-            let mut old = self.dom.iter_mut().flat_map(|d| d.dom());
-            let mut new = dom.iter_mut().flat_map(|d| d.dom());
-            let patch_set = euca::diff(&mut old, &mut new);
-            euca::patch(self.parent.clone(), patch_set, self.callback.clone());
-        }
+        debug!("rendering update");
+        let old = self.dom.iter_mut().flat_map(|d| d.dom());
+        let new = dom.iter_mut().flat_map(|d| d.dom());
+        let patch_set = euca::diff(old, new);
+        euca::patch(self.parent.clone(), patch_set, self.callback.clone());
 
         // store the new dom, drop the old one
         self.dom = dom;
