@@ -1,0 +1,13 @@
+{
+  "author": "Matthew Nicholson <matt@matt-land.com>",
+  "name": "euca-test",
+  "version": "0.0.1",
+  "scripts": {
+    "start": "parcel index.html",
+    "build": "parcel build index.html"
+  },
+  "devDependencies": {
+    "parcel-bundler": "^1.10.3",
+    "parcel-plugin-wasm.rs": "^1.2.7"
+  }
+}
