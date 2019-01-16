@@ -42,48 +42,48 @@ struct Dom<Message> {
     children: Vec<Dom<Message>>,
 }
 
-impl<Message> Dom<Message> {
-    fn dom(&mut self) -> Vec<euca::DomItem<Message>>
-    where
+impl<'a, Message> Dom<Message> {
+    fn dom(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> where
         Message: Clone,
     {
         use std::iter;
-        iter::once(&mut self.node)
+        let iter = iter::once(&mut self.node)
             .map(|node| match node {
                 Node::Text { text, ref mut node } => {
                     euca::DomItem::Text {
-                        text: text.clone(),
+                        text: text,
                         node: match node {
-                            Some(node) => euca::Storage::Read(Some(node.clone())),
+                            Some(_) => euca::Storage::Read(Box::new(move || node.take().unwrap())),
                             None => euca::Storage::Write(Box::new(move |n| *node = Some(n))),
                         }
                     }
                 }
                 Node::Element { name, ref mut node } => {
                     euca::DomItem::Element {
-                        element: name.to_owned(),
+                        element: name,
                         node: match node {
-                            Some(node) => euca::Storage::Read(Some(node.clone())),
+                            Some(_) => euca::Storage::Read(Box::new(move || node.take().unwrap())),
                             None => euca::Storage::Write(Box::new(move |n| *node = Some(n))),
                         }
                     }
                 }
             })
             .chain(self.event.iter_mut()
-                 .map(|e| euca::DomItem::Event {
-                     trigger: e.trigger.clone(),
-                     handler: euca::EventHandler::Msg(e.message.clone()),
-                     closure: match e.closure {
-                         Some(_) => euca::Storage::Read(e.closure.take()),
-                         None => euca::Storage::Write(Box::new(move |c| e.closure = Some(c))),
+                 .map(|Event { trigger, message, closure }| euca::DomItem::Event {
+                     trigger: trigger,
+                     handler: euca::EventHandler::Msg(message),
+                     closure: match closure {
+                         Some(_) => euca::Storage::Read(Box::new(move || closure.take().unwrap())),
+                         None => euca::Storage::Write(Box::new(move |c| *closure = Some(c))),
                      },
                  })
             )
             .chain(self.children.iter_mut()
                 .flat_map(|c| c.dom())
             )
-            .chain(iter::once(euca::DomItem::Up))
-            .collect()
+            .chain(iter::once(euca::DomItem::Up));
+
+        Box::new(iter)
     }
 }
 
