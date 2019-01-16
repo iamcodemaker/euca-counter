@@ -298,4 +298,33 @@ mod tests {
     // we can also test the view/renering code by sending it a model and checking the dom that
     // comes out. This requires a custom PartialEq implementation and a custom Debug implementation
     // that ignores web_sys nodes and closures as those don't have PartialEq or Debug.
+    // euca::DomItem has PartialEq and Debug implementations that meet this criteria, so we can
+    // implement comparisons for testing purposes in terms of the dom iterator.
+    #[test]
+    fn basic_render() {
+        let model = Model::new();
+        let mut dom = model.render();
+
+        let mut reference: DomVec<Msg> = vec![
+            button("+", Msg::Increment),
+            counter(0),
+            button("-", Msg::Decrement),
+        ].into();
+
+        // here we could do this
+        //
+        // ```rust
+        // assert!(dom.dom_iter().eq(reference.dom_iter()));
+        // ```
+        //
+        // but we want to use assert_eq!() so we can see the contents of the dom if it doesn't
+        // match
+
+        let dom: Vec<euca::DomItem<Msg>> = dom.dom_iter().collect();
+        let reference: Vec<euca::DomItem<Msg>> = reference.dom_iter().collect();
+        assert_eq!(dom, reference);
+    }
+
+    // we can also use this technique to test individual dom generation components instead of
+    // testing the entire render function if necessary
 }
