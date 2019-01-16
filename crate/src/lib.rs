@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use cfg_if::cfg_if;
 use log::{trace, debug, info, warn, error};
+use euca::DomIter;
 
 cfg_if! {
     // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -42,10 +43,10 @@ struct Dom<Message> {
     children: Vec<Dom<Message>>,
 }
 
-impl<'a, Message> Dom<Message> {
-    fn dom(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> where
-        Message: Clone,
-    {
+impl<'a, Message> euca::DomIter<'a, Message> for Dom<Message> where
+    Message: Clone + PartialEq,
+{
+    fn dom_iter(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> {
         use std::iter;
         let iter = iter::once(&mut self.node)
             .map(|node| match node {
@@ -79,7 +80,7 @@ impl<'a, Message> Dom<Message> {
                  })
             )
             .chain(self.children.iter_mut()
-                .flat_map(|c| c.dom())
+                .flat_map(|c| c.dom_iter())
             )
             .chain(iter::once(euca::DomItem::Up));
 
@@ -138,19 +139,35 @@ fn update(model: &mut Model, msg: Msg) {
     }
 }
 
-fn render(model: &Model) -> Vec<Dom<Msg>> {
+fn render(model: &Model) -> DomVec<Msg> {
     vec![
         button("+", Msg::Increment),
         counter(model.0),
         button("-", Msg::Decrement),
-    ]
+    ].into()
+}
+
+struct DomVec<Msg>(Vec<Dom<Msg>>);
+
+impl<'a, Msg> euca::DomIter<'a, Msg> for DomVec<Msg> where
+    Msg: Clone + PartialEq,
+{
+    fn dom_iter(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Msg>> + 'a> {
+        Box::new(self.0.iter_mut().flat_map(|i| i.dom_iter()))
+    }
+}
+
+impl<Msg> From<Vec<Dom<Msg>>> for DomVec<Msg> {
+    fn from(v: Vec<Dom<Msg>>) -> Self {
+        DomVec(v)
+    }
 }
 
 use std::rc::Rc;
 use std::cell::RefCell;
 
 struct App {
-    dom: Vec<Dom<Msg>>,
+    dom: DomVec<Msg>,
     parent: web_sys::Element,
     model: Model,
     callback: Rc<Fn(Msg)>,
@@ -188,7 +205,7 @@ impl App {
 
         let mut app = app.borrow_mut();
 
-        let n = app.dom.iter_mut().flat_map(|d| d.dom());
+        let n = app.dom.dom_iter();
         let patch_set = euca::diff(iter::empty(), n);
         euca::patch(parent, patch_set, callback);
     }
@@ -202,8 +219,8 @@ impl App {
 
         // push changes to the browser
         debug!("rendering update");
-        let old = self.dom.iter_mut().flat_map(|d| d.dom());
-        let new = dom.iter_mut().flat_map(|d| d.dom());
+        let old = self.dom.dom_iter();
+        let new = dom.dom_iter();
         let patch_set = euca::diff(old, new);
         euca::patch(self.parent.clone(), patch_set, self.callback.clone());
 
