@@ -174,7 +174,30 @@ struct App {
     dom: DomVec<Msg>,
     parent: web_sys::Element,
     model: Model,
-    callback: Rc<Fn(Msg)>,
+}
+
+impl euca::Dispatch<Msg> for App {
+    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Msg) {
+        debug!("dispatching msg: {:?}", msg);
+
+        let mut app = app_rc.borrow_mut();
+        let parent = app.parent.clone();
+
+        // update the model
+        app.model.update(msg);
+
+        // render a new dom from the updated model
+        let mut new_dom = app.model.render();
+
+        // push changes to the browser
+        debug!("rendering update");
+        let old = app.dom.dom_iter();
+        let new = new_dom.dom_iter();
+        let patch_set = euca::diff(old, new);
+        euca::patch(parent, patch_set, app_rc.clone());
+
+        app.dom = new_dom;
+    }
 }
 
 impl App {
@@ -185,51 +208,21 @@ impl App {
         // we use a RefCell here because we need the dispatch callback to be able to mutate our
         // App. This should be safe because the browser should only ever dispatch events from a
         // single thread.
-        let app: Rc<RefCell<_>> = Rc::new(RefCell::new(App {
+        let app_rc: Rc<RefCell<_>> = Rc::new(RefCell::new(App {
             dom: dom,
             parent: parent.clone(),
             model: model,
-            callback: Rc::new(|_|()),
         }));
-
-        let callback_app = app.clone();
-        let callback = Rc::new(move |msg| {
-            debug!("dispatching msg: {:?}", msg);
-            callback_app.borrow_mut().dispatch(msg);
-        });
-
-        app.borrow_mut().callback = callback.clone();
-        // at this point, Rc(app) references Rc(callback) which references Rc(app) creating a
-        // circular reference. This will never be freed. That's fine though we need this to stick
-        // around.
 
         // render the initial app
         use std::iter;
         debug!("rendering initial dom");
 
-        let mut app = app.borrow_mut();
+        let mut app = app_rc.borrow_mut();
 
         let n = app.dom.dom_iter();
         let patch_set = euca::diff(iter::empty(), n);
-        euca::patch(parent, patch_set, callback);
-    }
-
-    fn dispatch(&mut self, msg: Msg) {
-        // update the model
-        self.model.update(msg);
-
-        // render a new dom from the updated model
-        let mut dom = self.model.render();
-
-        // push changes to the browser
-        debug!("rendering update");
-        let old = self.dom.dom_iter();
-        let new = dom.dom_iter();
-        let patch_set = euca::diff(old, new);
-        euca::patch(self.parent.clone(), patch_set, self.callback.clone());
-
-        // store the new dom, drop the old one
-        self.dom = dom;
+        euca::patch(parent, patch_set, app_rc.clone());
     }
 }
 
