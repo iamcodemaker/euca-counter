@@ -2,6 +2,7 @@ use wasm_bindgen::prelude::*;
 use cfg_if::cfg_if;
 use log::{trace, debug, info, warn, error};
 use euca::{Update, Render, DomIter};
+use std::fmt;
 
 cfg_if! {
     // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -43,10 +44,10 @@ struct Dom<Message> {
     children: Vec<Dom<Message>>,
 }
 
-impl<'a, Message> euca::DomIter<'a, Message> for Dom<Message> where
+impl<Message> euca::DomIter<Message> for Dom<Message> where
     Message: Clone + PartialEq,
 {
-    fn dom_iter(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> {
+    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> {
         use std::iter;
         let iter = iter::once(&mut self.node)
             .map(|node| match node {
@@ -153,10 +154,10 @@ impl euca::Render<DomVec<Msg>> for Model {
 
 struct DomVec<Msg>(Vec<Dom<Msg>>);
 
-impl<'a, Msg> euca::DomIter<'a, Msg> for DomVec<Msg> where
-    Msg: Clone + PartialEq,
+impl<Message> euca::DomIter<Message> for DomVec<Message> where
+    Message: Clone + PartialEq,
 {
-    fn dom_iter(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Msg>> + 'a> {
+    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> {
         Box::new(self.0.iter_mut().flat_map(|i| i.dom_iter()))
     }
 }
@@ -170,14 +171,18 @@ impl<Msg> From<Vec<Dom<Msg>>> for DomVec<Msg> {
 use std::rc::Rc;
 use std::cell::RefCell;
 
-struct App {
-    dom: DomVec<Msg>,
+struct App<Model, DomTree> {
+    dom: DomTree,
     parent: web_sys::Element,
     model: Model,
 }
 
-impl euca::Dispatch<Msg> for App {
-    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Msg) {
+impl<Message, Model, DomTree> euca::Dispatch<Message> for App<Model, DomTree> where
+    Message: fmt::Debug + Clone + PartialEq + 'static,
+    Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
+    DomTree: euca::DomIter<Message> + 'static,
+{
+    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message) {
         debug!("dispatching msg: {:?}", msg);
 
         let mut app = app_rc.borrow_mut();
@@ -200,30 +205,32 @@ impl euca::Dispatch<Msg> for App {
     }
 }
 
-impl App {
-    fn attach(parent: web_sys::Element, model: Model) {
-        // render our initial model
-        let dom = model.render();
+fn attach<Model, Message, DomTree>(parent: web_sys::Element, model: Model) where
+    Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
+    DomTree: euca::DomIter<Message> + 'static,
+    Message: fmt::Debug + Clone + PartialEq + 'static,
+{
+    // render our initial model
+    let dom = model.render();
 
-        // we use a RefCell here because we need the dispatch callback to be able to mutate our
-        // App. This should be safe because the browser should only ever dispatch events from a
-        // single thread.
-        let app_rc: Rc<RefCell<_>> = Rc::new(RefCell::new(App {
-            dom: dom,
-            parent: parent.clone(),
-            model: model,
-        }));
+    // we use a RefCell here because we need the dispatch callback to be able to mutate our
+    // App. This should be safe because the browser should only ever dispatch events from a
+    // single thread.
+    let app_rc: Rc<RefCell<_>> = Rc::new(RefCell::new(App {
+        dom: dom,
+        parent: parent.clone(),
+        model: model,
+    }));
 
-        // render the initial app
-        use std::iter;
-        debug!("rendering initial dom");
+    // render the initial app
+    use std::iter;
+    debug!("rendering initial dom");
 
-        let mut app = app_rc.borrow_mut();
+    let mut app = app_rc.borrow_mut();
 
-        let n = app.dom.dom_iter();
-        let patch_set = euca::diff(iter::empty(), n);
-        euca::patch(parent, patch_set, app_rc.clone());
-    }
+    let n = app.dom.dom_iter();
+    let patch_set = euca::diff(iter::empty(), n);
+    euca::patch(parent, patch_set, app_rc.clone());
 }
 
 cfg_if! {
@@ -262,7 +269,7 @@ pub fn run() -> Result<(), JsValue> {
         .expect("error querying for element")
         .expect("expected <main></main>");
 
-    App::attach(parent, Model::new());
+    attach(parent, Model::new());
 
     Ok(())
 }
