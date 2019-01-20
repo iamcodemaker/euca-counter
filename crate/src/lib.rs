@@ -233,6 +233,25 @@ fn attach<Model, Message, DomTree>(parent: web_sys::Element, model: Model) where
     euca::patch(parent, patch_set, app_rc.clone());
 }
 
+impl<Model, DomTree> App<Model, DomTree> {
+    fn detach<Message>(app_rc: Rc<RefCell<App<Model, DomTree>>>) where
+        Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
+        DomTree: euca::DomIter<Message> + 'static,
+        Message: fmt::Debug + Clone + PartialEq + 'static,
+    {
+        // render the initial app
+        use std::iter;
+        debug!("rendering initial dom");
+
+        let mut app = app_rc.borrow_mut();
+        let parent = app.parent.clone();
+
+        let o = app.dom.dom_iter();
+        let patch_set = euca::diff(o, iter::empty());
+        euca::patch(parent, patch_set, app_rc.clone());
+    }
+}
+
 cfg_if! {
     if #[cfg(feature = "console_error_panic_hook")] {
         fn set_panic_hook() {
