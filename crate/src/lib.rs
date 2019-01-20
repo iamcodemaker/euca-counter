@@ -205,35 +205,35 @@ impl<Message, Model, DomTree> euca::Dispatch<Message> for App<Model, DomTree> wh
     }
 }
 
-fn attach<Model, Message, DomTree>(parent: web_sys::Element, model: Model) where
-    Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
-    DomTree: euca::DomIter<Message> + 'static,
-    Message: fmt::Debug + Clone + PartialEq + 'static,
-{
-    // render our initial model
-    let dom = model.render();
-
-    // we use a RefCell here because we need the dispatch callback to be able to mutate our
-    // App. This should be safe because the browser should only ever dispatch events from a
-    // single thread.
-    let app_rc: Rc<RefCell<_>> = Rc::new(RefCell::new(App {
-        dom: dom,
-        parent: parent.clone(),
-        model: model,
-    }));
-
-    // render the initial app
-    use std::iter;
-    debug!("rendering initial dom");
-
-    let mut app = app_rc.borrow_mut();
-
-    let n = app.dom.dom_iter();
-    let patch_set = euca::diff(iter::empty(), n);
-    euca::patch(parent, patch_set, app_rc.clone());
-}
-
 impl<Model, DomTree> App<Model, DomTree> {
+    fn attach<Message>(parent: web_sys::Element, model: Model) where
+        Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
+        DomTree: euca::DomIter<Message> + 'static,
+        Message: fmt::Debug + Clone + PartialEq + 'static,
+    {
+        // render our initial model
+        let dom = model.render();
+
+        // we use a RefCell here because we need the dispatch callback to be able to mutate our
+        // App. This should be safe because the browser should only ever dispatch events from a
+        // single thread.
+        let app_rc: Rc<RefCell<_>> = Rc::new(RefCell::new(App {
+            dom: dom,
+            parent: parent.clone(),
+            model: model,
+        }));
+
+        // render the initial app
+        use std::iter;
+        debug!("rendering initial dom");
+
+        let mut app = app_rc.borrow_mut();
+
+        let n = app.dom.dom_iter();
+        let patch_set = euca::diff(iter::empty(), n);
+        euca::patch(parent, patch_set, app_rc.clone());
+    }
+
     fn detach<Message>(app_rc: Rc<RefCell<App<Model, DomTree>>>) where
         Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
         DomTree: euca::DomIter<Message> + 'static,
@@ -288,7 +288,7 @@ pub fn run() -> Result<(), JsValue> {
         .expect("error querying for element")
         .expect("expected <main></main>");
 
-    attach(parent, Model::new());
+    App::attach(parent, Model::new());
 
     Ok(())
 }
