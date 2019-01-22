@@ -1,8 +1,8 @@
 use wasm_bindgen::prelude::*;
 use cfg_if::cfg_if;
 use log::{trace, debug, info, warn, error};
-use euca::{Update, Render, DomIter};
-use std::fmt;
+use euca::dom::*;
+use euca::app::*;
 
 cfg_if! {
     // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -44,46 +44,46 @@ struct Dom<Message> {
     children: Vec<Dom<Message>>,
 }
 
-impl<Message> euca::DomIter<Message> for Dom<Message> where
+impl<Message> DomIter<Message> for Dom<Message> where
     Message: Clone + PartialEq,
 {
-    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> {
+    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a> {
         use std::iter;
         let iter = iter::once(&mut self.node)
             .map(|node| match node {
                 Node::Text { text, ref mut node } => {
-                    euca::DomItem::Text {
+                    DomItem::Text {
                         text: text,
                         node: match node {
-                            Some(_) => euca::Storage::Read(Box::new(move || node.take().unwrap())),
-                            None => euca::Storage::Write(Box::new(move |n| *node = Some(n))),
+                            Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
+                            None => Storage::Write(Box::new(move |n| *node = Some(n))),
                         }
                     }
                 }
                 Node::Element { name, ref mut node } => {
-                    euca::DomItem::Element {
+                    DomItem::Element {
                         element: name,
                         node: match node {
-                            Some(_) => euca::Storage::Read(Box::new(move || node.take().unwrap())),
-                            None => euca::Storage::Write(Box::new(move |n| *node = Some(n))),
+                            Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
+                            None => Storage::Write(Box::new(move |n| *node = Some(n))),
                         }
                     }
                 }
             })
             .chain(self.event.iter_mut()
-                 .map(|Event { trigger, message, closure }| euca::DomItem::Event {
+                 .map(|Event { trigger, message, closure }| DomItem::Event {
                      trigger: trigger,
-                     handler: euca::EventHandler::Msg(message),
+                     handler: EventHandler::Msg(message),
                      closure: match closure {
-                         Some(_) => euca::Storage::Read(Box::new(move || closure.take().unwrap())),
-                         None => euca::Storage::Write(Box::new(move |c| *closure = Some(c))),
+                         Some(_) => Storage::Read(Box::new(move || closure.take().unwrap())),
+                         None => Storage::Write(Box::new(move |c| *closure = Some(c))),
                      },
                  })
             )
             .chain(self.children.iter_mut()
                 .flat_map(|c| c.dom_iter())
             )
-            .chain(iter::once(euca::DomItem::Up));
+            .chain(iter::once(DomItem::Up));
 
         Box::new(iter)
     }
@@ -133,7 +133,7 @@ fn counter(count: i32) -> Dom<Msg> {
     }
 }
 
-impl euca::Update<Msg> for Model {
+impl Update<Msg> for Model {
     fn update(&mut self, msg: Msg) {
         match msg {
             Msg::Increment => self.0 += 1,
@@ -142,7 +142,7 @@ impl euca::Update<Msg> for Model {
     }
 }
 
-impl euca::Render<DomVec<Msg>> for Model {
+impl Render<DomVec<Msg>> for Model {
     fn render(&self) -> DomVec<Msg> {
         vec![
             button("+", Msg::Increment),
@@ -154,10 +154,10 @@ impl euca::Render<DomVec<Msg>> for Model {
 
 struct DomVec<Msg>(Vec<Dom<Msg>>);
 
-impl<Message> euca::DomIter<Message> for DomVec<Message> where
+impl<Message> DomIter<Message> for DomVec<Message> where
     Message: Clone + PartialEq,
 {
-    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = euca::DomItem<'a, Message>> + 'a> {
+    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a> {
         Box::new(self.0.iter_mut().flat_map(|i| i.dom_iter()))
     }
 }
@@ -165,90 +165,6 @@ impl<Message> euca::DomIter<Message> for DomVec<Message> where
 impl<Msg> From<Vec<Dom<Msg>>> for DomVec<Msg> {
     fn from(v: Vec<Dom<Msg>>) -> Self {
         DomVec(v)
-    }
-}
-
-use std::rc::Rc;
-use std::cell::RefCell;
-
-struct App<Model, DomTree> {
-    dom: DomTree,
-    parent: web_sys::Element,
-    model: Model,
-}
-
-impl<Message, Model, DomTree> euca::Dispatch<Message> for App<Model, DomTree> where
-    Message: fmt::Debug + Clone + PartialEq + 'static,
-    Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
-    DomTree: euca::DomIter<Message> + 'static,
-{
-    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message) {
-        debug!("dispatching msg: {:?}", msg);
-
-        let mut app = app_rc.borrow_mut();
-        let parent = app.parent.clone();
-
-        // update the model
-        app.model.update(msg);
-
-        // render a new dom from the updated model
-        let mut new_dom = app.model.render();
-
-        // push changes to the browser
-        debug!("rendering update");
-        let old = app.dom.dom_iter();
-        let new = new_dom.dom_iter();
-        let patch_set = euca::diff(old, new);
-        euca::patch(parent, patch_set, app_rc.clone());
-
-        app.dom = new_dom;
-    }
-}
-
-impl<Model, DomTree> App<Model, DomTree> {
-    fn attach<Message>(parent: web_sys::Element, model: Model) where
-        Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
-        DomTree: euca::DomIter<Message> + 'static,
-        Message: fmt::Debug + Clone + PartialEq + 'static,
-    {
-        // render our initial model
-        let dom = model.render();
-
-        // we use a RefCell here because we need the dispatch callback to be able to mutate our
-        // App. This should be safe because the browser should only ever dispatch events from a
-        // single thread.
-        let app_rc: Rc<RefCell<_>> = Rc::new(RefCell::new(App {
-            dom: dom,
-            parent: parent.clone(),
-            model: model,
-        }));
-
-        // render the initial app
-        use std::iter;
-        debug!("rendering initial dom");
-
-        let mut app = app_rc.borrow_mut();
-
-        let n = app.dom.dom_iter();
-        let patch_set = euca::diff(iter::empty(), n);
-        euca::patch(parent, patch_set, app_rc.clone());
-    }
-
-    fn detach<Message>(app_rc: Rc<RefCell<App<Model, DomTree>>>) where
-        Model: euca::Update<Message> + euca::Render<DomTree> + 'static,
-        DomTree: euca::DomIter<Message> + 'static,
-        Message: fmt::Debug + Clone + PartialEq + 'static,
-    {
-        // render the initial app
-        use std::iter;
-        debug!("rendering initial dom");
-
-        let mut app = app_rc.borrow_mut();
-        let parent = app.parent.clone();
-
-        let o = app.dom.dom_iter();
-        let patch_set = euca::diff(o, iter::empty());
-        euca::patch(parent, patch_set, app_rc.clone());
     }
 }
 
@@ -316,9 +232,9 @@ mod tests {
 
     // we can also test the view/renering code by sending it a model and checking the dom that
     // comes out. This requires a custom PartialEq implementation and a custom Debug implementation
-    // that ignores web_sys nodes and closures as those don't have PartialEq or Debug.
-    // euca::DomItem has PartialEq and Debug implementations that meet this criteria, so we can
-    // implement comparisons for testing purposes in terms of the dom iterator.
+    // that ignores web_sys nodes and closures as those don't have PartialEq or Debug.  DomItem has
+    // PartialEq and Debug implementations that meet this criteria, so we can implement comparisons
+    // for testing purposes in terms of the dom iterator.
     #[test]
     fn basic_render() {
         let model = Model::new();
@@ -339,8 +255,8 @@ mod tests {
         // but we want to use assert_eq!() so we can see the contents of the dom if it doesn't
         // match
 
-        let dom: Vec<euca::DomItem<Msg>> = dom.dom_iter().collect();
-        let reference: Vec<euca::DomItem<Msg>> = reference.dom_iter().collect();
+        let dom: Vec<DomItem<Msg>> = dom.dom_iter().collect();
+        let reference: Vec<DomItem<Msg>> = reference.dom_iter().collect();
         assert_eq!(dom, reference);
     }
 
