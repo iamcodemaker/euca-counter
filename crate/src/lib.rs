@@ -13,7 +13,7 @@ cfg_if! {
     }
 }
 
-pub struct Model(i32);
+struct Model(i32);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Msg {
