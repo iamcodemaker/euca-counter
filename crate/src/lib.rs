@@ -1,6 +1,5 @@
 use wasm_bindgen::prelude::*;
 use cfg_if::cfg_if;
-use log::{trace, debug, info, warn, error};
 use euca::app::*;
 use euca::dom::*;
 
@@ -15,20 +14,28 @@ cfg_if! {
 
 struct Model(i32);
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Msg {
-    Increment,
-    Decrement,
-}
-
 impl Model {
     fn new() -> Self {
         Model(0)
     }
 }
 
-impl Update<Msg> for Model {
-    fn update(&mut self, msg: Msg) {
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Msg {
+    Increment,
+    Decrement,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Cmd { }
+
+impl SideEffect<Msg> for Cmd {
+    fn process(self, _: &Dispatcher<Msg, Self>) { }
+}
+
+impl Update<Msg, Cmd> for Model {
+    fn update(&mut self, msg: Msg, _: &mut Commands<Cmd>) {
         match msg {
             Msg::Increment => self.0 += 1,
             Msg::Decrement => self.0 -= 1,
@@ -36,19 +43,19 @@ impl Update<Msg> for Model {
     }
 }
 
-fn button(text: &str, msg: Msg) -> Dom<Msg> {
+fn button(text: &str, msg: Msg) -> Dom<Msg, Cmd> {
     Dom::elem("button")
         .event("click", msg)
         .push(Dom::text(text))
 }
 
-fn counter(count: i32) -> Dom<Msg> {
+fn counter(count: i32) -> Dom<Msg, Cmd> {
     Dom::elem("div")
         .push(Dom::text(count.to_string()))
 }
 
-impl Render<DomVec<Msg>> for Model {
-    fn render(&self) -> DomVec<Msg> {
+impl Render<DomVec<Msg, Cmd>> for Model {
+    fn render(&self) -> DomVec<Msg, Cmd> {
         vec![
             button("+", Msg::Increment),
             counter(self.0),
@@ -93,7 +100,8 @@ pub fn run() -> Result<(), JsValue> {
         .expect("error querying for element")
         .expect("expected <main></main>");
 
-    App::attach(parent, Model::new());
+    AppBuilder::default()
+        .attach(parent, Model::new());
 
     Ok(())
 }
@@ -109,14 +117,14 @@ mod tests {
     #[test]
     fn increment() {
         let mut model = Model::new();
-        model.update(Msg::Increment);
+        model.update(Msg::Increment, &mut Commands::default());
         assert_eq!(model.0, 1);
     }
 
     #[test]
     fn decrement() {
         let mut model = Model::new();
-        model.update(Msg::Decrement);
+        model.update(Msg::Decrement, &mut Commands::default());
         assert_eq!(model.0, -1);
     }
 
@@ -128,9 +136,9 @@ mod tests {
     #[test]
     fn basic_render() {
         let model = Model::new();
-        let mut dom = model.render();
+        let dom = model.render();
 
-        let mut reference: DomVec<Msg> = vec![
+        let reference: DomVec<Msg, Cmd> = vec![
             button("+", Msg::Increment),
             counter(0),
             button("-", Msg::Decrement),
@@ -146,8 +154,8 @@ mod tests {
         // match
 
         use euca::vdom::{DomIter, DomItem};
-        let dom: Vec<DomItem<Msg>> = dom.dom_iter().collect();
-        let reference: Vec<DomItem<Msg>> = reference.dom_iter().collect();
+        let dom: Vec<DomItem<Msg, Cmd>> = dom.dom_iter().collect();
+        let reference: Vec<DomItem<Msg, Cmd>> = reference.dom_iter().collect();
         assert_eq!(dom, reference);
     }
 
