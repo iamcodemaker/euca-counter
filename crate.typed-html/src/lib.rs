@@ -58,7 +58,7 @@ impl<'a> Render<Dom<Msg, Cmd>> for Model {
         let tree: DOMTree<Euca<Msg>> = html!(
             <div>
                 <button onclick=Msg::Increment>"+"</button>
-                { text!("{}", {self.0}) }
+                <div>{ text!("{}", {self.0}) }</div>
                 <button onclick=Msg::Decrement>"-"</button>
             </div>
         : Euca<Msg>);
@@ -93,7 +93,8 @@ mod tests {
     }
 
     fn counter(count: i32) -> Dom<Msg, Cmd> {
-        Dom::text(count.to_string())
+        Dom::elem("div")
+            .push(Dom::text(count.to_string()))
     }
 
     // we can test the model in isolation by initializing it, then sending it the messages we want,
